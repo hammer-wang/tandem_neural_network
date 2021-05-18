@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 from models import ForwardNet
 from dataset import SiliconColorRegressionTaskSplit
 from torch.optim.lr_scheduler import StepLR
+import tqdm
 
 def train_forward_model(forward_net, args, evaluate=False):
     device = args.device
@@ -33,11 +34,11 @@ def train_forward_model(forward_net, args, evaluate=False):
     val_losses.append(val_loss)
 
     model_path = './trained_models/forward_model_{}_eval{}.pt'.format(
-        args.model, args.eval)
+        'MLP', args.eval)
     log_path = './logs/forward_model_{}_eval{}_log.pkl'.format(
-        args.model, args.eval)
+        'MLP', args.eval)
 
-    for e in range(args.epochs):
+    for e in tqdm.tqdm(range(args.epochs)):
         tr_loss = train_forward_epoch(
             forward_net, optimizer, criterion, tr_loader, args)
         val_loss = val_forward(forward_net, criterion, val_loader, args)
@@ -67,26 +68,15 @@ def train_forward_model(forward_net, args, evaluate=False):
 def train_forward_epoch(net, optimizer, criterion, dataloader, args):
     net.train()
     device = args.device
-    model = args.model
 
     loss_tr = []
     optimizer.zero_grad()
 
     for x, y, _ in dataloader:
         x, y = x.float().to(device), y.float().to(device)
-        if model == 'MLP':
-            y_pred = net(x)
-            loss = criterion(y, y_pred)
-        elif model == 'MOE':
-            p = net.gating_net(x)
-            loss = 0
-            for i, predictor in enumerate(net.predictors):
-                y_pred = predictor(x)
-                loss = loss + \
-                    torch.mean(
-                        p[:, i] * torch.sum(torch.pow((y - y_pred), 2), dim=1), dim=0)
-        else:
-            raise ValueError
+        y_pred = net(x)
+        loss = criterion(y, y_pred)
+
         loss.backward()
         optimizer.step()
         loss_tr.append(loss.detach().cpu().item())
@@ -97,7 +87,6 @@ def train_forward_epoch(net, optimizer, criterion, dataloader, args):
 def val_forward(net, criterion, dataloader, args):
     net.eval()
     device = args.device
-    model = args.model
 
     loss_total = []
     for x, y, _ in dataloader:
@@ -131,14 +120,9 @@ if __name__ == '__main__':
     args = parser.parse_args()
     train_eval = args.eval
     seed = args.seed
-    model = args.model
 
     torch.manual_seed(seed)
     np.random.seed(seed)
 
-    if model == 'MLP':
-        forward_net = ForwardNet().to(args.device)
-    else:
-        raise ValueError
-
+    forward_net = ForwardNet().to(args.device)
     train_forward_model(forward_net, args, args.eval)
